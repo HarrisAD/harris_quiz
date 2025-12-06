@@ -329,11 +329,6 @@ export function PlayerGame() {
           />
         ))}
       </div>
-
-      {/* Score */}
-      <div className="mt-4 text-center text-white/80">
-        Total: {myPlayer?.totalScore?.toLocaleString() || 0} points
-      </div>
     </div>
   );
 }
