@@ -113,37 +113,38 @@ export function AdminGame() {
   // Build answer history grouped by round and question
   const buildAnswerHistory = () => {
     const allAnswers = getAllAnswers();
-    const history: Record<string, Record<string, { player: string; answer: string; answerText: string; correct: boolean; points: number }[]>> = {};
+    const history: Record<number, Record<number, { player: string; answer: string; answerText: string; correct: boolean; points: number }[]>> = {};
 
     for (const key in allAnswers) {
+      const answer = allAnswers[key];
+
       // Key format: odUserId_roundIdx_questionIdx
-      // odUserId can contain underscores or special chars, so parse from end
+      // Parse from end since odUserId can contain special chars
       const parts = key.split('_');
       if (parts.length < 3) continue;
 
       const questionIdx = parseInt(parts[parts.length - 1]);
       const roundIdx = parseInt(parts[parts.length - 2]);
-      const odUserId = parts.slice(0, -2).join('_');
+
+      // Skip invalid indices
+      if (isNaN(roundIdx) || isNaN(questionIdx)) continue;
 
       // Skip if round/question doesn't exist in current quiz (orphan data)
       const round = quiz?.rounds[roundIdx];
       const question = round?.questions[questionIdx];
       if (!round || !question) continue;
 
-      const answer = allAnswers[key];
-      const player = players[odUserId];
+      // Use odUserId from the answer object itself (more reliable)
+      const player = players[answer.odUserId];
 
-      const roundKey = round.name || `Round ${roundIdx + 1}`;
-      const questionKey = `Q${questionIdx + 1}: ${question.question.substring(0, 50)}${question.question.length > 50 ? '...' : ''}`;
-
-      if (!history[roundKey]) history[roundKey] = {};
-      if (!history[roundKey][questionKey]) history[roundKey][questionKey] = [];
+      if (!history[roundIdx]) history[roundIdx] = {};
+      if (!history[roundIdx][questionIdx]) history[roundIdx][questionIdx] = [];
 
       const labels = ['A', 'B', 'C', 'D'];
       const answerLabel = labels[answer.answerIndex] || '?';
       const answerText = question.options[answer.answerIndex] || 'Unknown';
 
-      history[roundKey][questionKey].push({
+      history[roundIdx][questionIdx].push({
         player: player?.teamName || 'Unknown Player',
         answer: answerLabel,
         answerText: answerText,
@@ -155,9 +156,41 @@ export function AdminGame() {
     return history;
   };
 
+  // Convert history to display format with round/question names
+  const getHistoryDisplay = () => {
+    const history = buildAnswerHistory();
+    const display: { roundName: string; roundIdx: number; questions: { questionName: string; questionIdx: number; answers: { player: string; answer: string; answerText: string; correct: boolean; points: number }[] }[] }[] = [];
+
+    const sortedRounds = Object.keys(history).map(Number).sort((a, b) => a - b);
+
+    for (const roundIdx of sortedRounds) {
+      const round = quiz?.rounds[roundIdx];
+      const roundName = round?.name || `Round ${roundIdx + 1}`;
+      const questions: { questionName: string; questionIdx: number; answers: { player: string; answer: string; answerText: string; correct: boolean; points: number }[] }[] = [];
+
+      const sortedQuestions = Object.keys(history[roundIdx]).map(Number).sort((a, b) => a - b);
+
+      for (const questionIdx of sortedQuestions) {
+        const question = round?.questions[questionIdx];
+        const questionText = question?.question || 'Unknown';
+        const questionName = `Q${questionIdx + 1}: ${questionText.substring(0, 50)}${questionText.length > 50 ? '...' : ''}`;
+
+        questions.push({
+          questionName,
+          questionIdx,
+          answers: history[roundIdx][questionIdx],
+        });
+      }
+
+      display.push({ roundName, roundIdx, questions });
+    }
+
+    return display;
+  };
+
   // Render answer history modal
   const renderAnswerHistory = () => {
-    const history = buildAnswerHistory();
+    const historyDisplay = getHistoryDisplay();
 
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
@@ -172,17 +205,17 @@ export function AdminGame() {
             </button>
           </div>
           <div className="p-6 overflow-y-auto max-h-[70vh]">
-            {Object.keys(history).length === 0 ? (
+            {historyDisplay.length === 0 ? (
               <p className="text-gray-500 text-center">No answers recorded yet</p>
             ) : (
-              Object.entries(history).map(([roundName, questions]) => (
-                <div key={roundName} className="mb-6">
-                  <h3 className="text-lg font-bold text-purple-600 mb-3">{roundName}</h3>
-                  {Object.entries(questions).map(([questionName, answers]) => (
-                    <div key={questionName} className="mb-4 bg-gray-50 rounded-lg p-4">
-                      <h4 className="font-medium text-gray-800 mb-2">{questionName}</h4>
+              historyDisplay.map((round) => (
+                <div key={round.roundIdx} className="mb-6">
+                  <h3 className="text-lg font-bold text-purple-600 mb-3">{round.roundName}</h3>
+                  {round.questions.map((q) => (
+                    <div key={q.questionIdx} className="mb-4 bg-gray-50 rounded-lg p-4">
+                      <h4 className="font-medium text-gray-800 mb-2">{q.questionName}</h4>
                       <div className="space-y-1">
-                        {answers.map((a, idx) => (
+                        {q.answers.map((a, idx) => (
                           <div
                             key={idx}
                             className={`p-2 rounded text-sm flex justify-between items-center ${
