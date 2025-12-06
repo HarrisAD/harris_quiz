@@ -113,27 +113,40 @@ export function AdminGame() {
   // Build answer history grouped by round and question
   const buildAnswerHistory = () => {
     const allAnswers = getAllAnswers();
-    const history: Record<string, Record<string, { player: string; answer: string; correct: boolean; points: number }[]>> = {};
+    const history: Record<string, Record<string, { player: string; answer: string; answerText: string; correct: boolean; points: number }[]>> = {};
 
     for (const key in allAnswers) {
-      const [odUserId, roundStr, questionStr] = key.split('_');
-      const roundIdx = parseInt(roundStr);
-      const questionIdx = parseInt(questionStr);
-      const answer = allAnswers[key];
+      // Key format: odUserId_roundIdx_questionIdx
+      // odUserId can contain underscores or special chars, so parse from end
+      const parts = key.split('_');
+      if (parts.length < 3) continue;
+
+      const questionIdx = parseInt(parts[parts.length - 1]);
+      const roundIdx = parseInt(parts[parts.length - 2]);
+      const odUserId = parts.slice(0, -2).join('_');
+
+      // Skip if round/question doesn't exist in current quiz (orphan data)
       const round = quiz?.rounds[roundIdx];
       const question = round?.questions[questionIdx];
+      if (!round || !question) continue;
+
+      const answer = allAnswers[key];
       const player = players[odUserId];
 
-      const roundKey = round?.name || `Round ${roundIdx + 1}`;
-      const questionKey = `Q${questionIdx + 1}: ${question?.question?.substring(0, 50) || 'Unknown'}...`;
+      const roundKey = round.name || `Round ${roundIdx + 1}`;
+      const questionKey = `Q${questionIdx + 1}: ${question.question.substring(0, 50)}${question.question.length > 50 ? '...' : ''}`;
 
       if (!history[roundKey]) history[roundKey] = {};
       if (!history[roundKey][questionKey]) history[roundKey][questionKey] = [];
 
       const labels = ['A', 'B', 'C', 'D'];
+      const answerLabel = labels[answer.answerIndex] || '?';
+      const answerText = question.options[answer.answerIndex] || 'Unknown';
+
       history[roundKey][questionKey].push({
-        player: player?.teamName || odUserId,
-        answer: labels[answer.answerIndex] || '?',
+        player: player?.teamName || 'Unknown Player',
+        answer: answerLabel,
+        answerText: answerText,
         correct: answer.correct,
         points: answer.points,
       });
@@ -168,16 +181,20 @@ export function AdminGame() {
                   {Object.entries(questions).map(([questionName, answers]) => (
                     <div key={questionName} className="mb-4 bg-gray-50 rounded-lg p-4">
                       <h4 className="font-medium text-gray-800 mb-2">{questionName}</h4>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      <div className="space-y-1">
                         {answers.map((a, idx) => (
                           <div
                             key={idx}
-                            className={`p-2 rounded text-sm ${
+                            className={`p-2 rounded text-sm flex justify-between items-center ${
                               a.correct ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                             }`}
                           >
-                            <span className="font-medium">{a.player}</span>: {a.answer}
-                            <span className="ml-1 text-xs">({a.points}pts)</span>
+                            <div>
+                              <span className="font-medium">{a.player}</span>
+                              <span className="mx-2">→</span>
+                              <span>{a.answer}: {a.answerText}</span>
+                            </div>
+                            <span className="text-xs font-mono">{a.points}pts</span>
                           </div>
                         ))}
                       </div>
