@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { saveQuiz, createSession } from '../../firebase/database';
 import type { Quiz } from '../../types';
@@ -27,6 +27,66 @@ const emptyRound = (): RoundForm => ({
   questions: [emptyQuestion()],
 });
 
+// Parse CSV content into rounds and questions
+// Expected format: Round,Question,OptionA,OptionB,OptionC,OptionD,CorrectAnswer,TimeLimit
+const parseCSV = (content: string): RoundForm[] => {
+  const lines = content.split('\n').filter(line => line.trim());
+
+  // Skip header row if it looks like a header
+  const startIndex = lines[0]?.toLowerCase().includes('round') ? 1 : 0;
+
+  const roundsMap = new Map<string, QuestionForm[]>();
+
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i];
+    // Handle CSV with quoted fields
+    const parts: string[] = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (const char of line) {
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        parts.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    parts.push(current.trim());
+
+    if (parts.length < 7) continue;
+
+    const [roundName, question, optA, optB, optC, optD, correct, timeLimit] = parts;
+
+    // Determine correct index (A=0, B=1, C=2, D=3)
+    let correctIndex = 0;
+    const correctUpper = correct.toUpperCase().trim();
+    if (correctUpper === 'B' || correctUpper === '1') correctIndex = 1;
+    else if (correctUpper === 'C' || correctUpper === '2') correctIndex = 2;
+    else if (correctUpper === 'D' || correctUpper === '3') correctIndex = 3;
+
+    const questionData: QuestionForm = {
+      question: question.trim(),
+      options: [optA.trim(), optB.trim(), optC.trim(), optD.trim()],
+      correctIndex,
+      timeLimit: parseInt(timeLimit) || 30,
+    };
+
+    const rName = roundName.trim() || 'Round 1';
+    if (!roundsMap.has(rName)) {
+      roundsMap.set(rName, []);
+    }
+    roundsMap.get(rName)!.push(questionData);
+  }
+
+  return Array.from(roundsMap.entries()).map(([name, questions]) => ({
+    name,
+    questions,
+  }));
+};
+
 export function QuizCreator() {
   const navigate = useNavigate();
   const [quizName, setQuizName] = useState('');
@@ -35,6 +95,52 @@ export function QuizCreator() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCSVUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      try {
+        const parsedRounds = parseCSV(content);
+        if (parsedRounds.length === 0) {
+          setError('No valid questions found in CSV');
+          return;
+        }
+        setRounds(parsedRounds);
+        setCurrentRoundIndex(0);
+        setCurrentQuestionIndex(0);
+        setError('');
+      } catch {
+        setError('Failed to parse CSV file');
+      }
+    };
+    reader.readAsText(file);
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const downloadTemplate = () => {
+    const template = `Round,Question,OptionA,OptionB,OptionC,OptionD,CorrectAnswer,TimeLimit
+Round 1: General Knowledge,What is the capital of France?,London,Paris,Berlin,Madrid,B,30
+Round 1: General Knowledge,Which planet is known as the Red Planet?,Venus,Earth,Mars,Jupiter,C,30
+Round 2: Science,What is H2O commonly known as?,Salt,Water,Sugar,Oil,B,20
+Round 2: Science,How many legs does a spider have?,6,8,10,12,B,15`;
+
+    const blob = new Blob([template], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'quiz_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const currentRound = rounds[currentRoundIndex];
   const currentQuestion = currentRound?.questions[currentQuestionIndex];
@@ -182,6 +288,37 @@ export function QuizCreator() {
           <p className="text-gray-500 text-sm mt-2">
             {rounds.length} round{rounds.length !== 1 ? 's' : ''} • {totalQuestions} question{totalQuestions !== 1 ? 's' : ''}
           </p>
+        </div>
+
+        {/* CSV Upload */}
+        <div className="bg-blue-50 border-2 border-dashed border-blue-300 rounded-2xl p-6 mb-6">
+          <div className="text-center">
+            <h3 className="font-semibold text-blue-800 mb-2">Bulk Upload Questions</h3>
+            <p className="text-blue-600 text-sm mb-4">
+              Upload a CSV file to add multiple questions at once
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button
+                onClick={downloadTemplate}
+                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+              >
+                Download Template
+              </button>
+              <label className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors cursor-pointer">
+                Upload CSV
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv"
+                  onChange={handleCSVUpload}
+                  className="hidden"
+                />
+              </label>
+            </div>
+            <p className="text-blue-500 text-xs mt-3">
+              Format: Round, Question, OptionA, OptionB, OptionC, OptionD, CorrectAnswer (A/B/C/D), TimeLimit
+            </p>
+          </div>
         </div>
 
         {/* Rounds Tabs */}
