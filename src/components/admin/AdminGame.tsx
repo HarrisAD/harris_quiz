@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useSession } from '../../hooks/useSession';
 import { useQuiz } from '../../hooks/useQuiz';
@@ -12,8 +13,9 @@ export function AdminGame() {
   const navigate = useNavigate();
   const { session, loading: sessionLoading } = useSession(sessionCode || null);
   const { quiz } = useQuiz(session?.quizId || null);
-  const { playersList, playerCount } = usePlayers(sessionCode || null);
-  const { getQuestionAnswers } = useAnswers(sessionCode || null);
+  const { playersList, playerCount, players } = usePlayers(sessionCode || null);
+  const { getQuestionAnswers, getAllAnswers } = useAnswers(sessionCode || null);
+  const [showAnswerHistory, setShowAnswerHistory] = useState(false);
 
   if (!sessionCode) {
     navigate('/admin');
@@ -108,6 +110,88 @@ export function AdminGame() {
     });
   };
 
+  // Build answer history grouped by round and question
+  const buildAnswerHistory = () => {
+    const allAnswers = getAllAnswers();
+    const history: Record<string, Record<string, { player: string; answer: string; correct: boolean; points: number }[]>> = {};
+
+    for (const key in allAnswers) {
+      const [odUserId, roundStr, questionStr] = key.split('_');
+      const roundIdx = parseInt(roundStr);
+      const questionIdx = parseInt(questionStr);
+      const answer = allAnswers[key];
+      const round = quiz?.rounds[roundIdx];
+      const question = round?.questions[questionIdx];
+      const player = players[odUserId];
+
+      const roundKey = round?.name || `Round ${roundIdx + 1}`;
+      const questionKey = `Q${questionIdx + 1}: ${question?.question?.substring(0, 50) || 'Unknown'}...`;
+
+      if (!history[roundKey]) history[roundKey] = {};
+      if (!history[roundKey][questionKey]) history[roundKey][questionKey] = [];
+
+      const labels = ['A', 'B', 'C', 'D'];
+      history[roundKey][questionKey].push({
+        player: player?.teamName || odUserId,
+        answer: labels[answer.answerIndex] || '?',
+        correct: answer.correct,
+        points: answer.points,
+      });
+    }
+
+    return history;
+  };
+
+  // Render answer history modal
+  const renderAnswerHistory = () => {
+    const history = buildAnswerHistory();
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+          <div className="p-6 border-b flex justify-between items-center">
+            <h2 className="text-2xl font-bold">Answer History</h2>
+            <button
+              onClick={() => setShowAnswerHistory(false)}
+              className="text-gray-500 hover:text-gray-700 text-2xl"
+            >
+              &times;
+            </button>
+          </div>
+          <div className="p-6 overflow-y-auto max-h-[70vh]">
+            {Object.keys(history).length === 0 ? (
+              <p className="text-gray-500 text-center">No answers recorded yet</p>
+            ) : (
+              Object.entries(history).map(([roundName, questions]) => (
+                <div key={roundName} className="mb-6">
+                  <h3 className="text-lg font-bold text-purple-600 mb-3">{roundName}</h3>
+                  {Object.entries(questions).map(([questionName, answers]) => (
+                    <div key={questionName} className="mb-4 bg-gray-50 rounded-lg p-4">
+                      <h4 className="font-medium text-gray-800 mb-2">{questionName}</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {answers.map((a, idx) => (
+                          <div
+                            key={idx}
+                            className={`p-2 rounded text-sm ${
+                              a.correct ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}
+                          >
+                            <span className="font-medium">{a.player}</span>: {a.answer}
+                            <span className="ml-1 text-xs">({a.points}pts)</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Lobby state
   if (session.status === 'lobby') {
     return (
@@ -166,6 +250,7 @@ export function AdminGame() {
   if (session.status === 'finished') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-pink-600 p-4">
+        {showAnswerHistory && renderAnswerHistory()}
         <div className="max-w-2xl mx-auto">
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-white mb-2">Game Over!</h1>
@@ -174,12 +259,20 @@ export function AdminGame() {
 
           <Leaderboard players={playersList} title="Final Standings" />
 
-          <button
-            onClick={() => navigate('/admin')}
-            className="w-full mt-6 bg-white/20 hover:bg-white/30 text-white font-bold py-4 rounded-xl transition-colors"
-          >
-            Host Another Game
-          </button>
+          <div className="mt-6 space-y-3">
+            <button
+              onClick={() => setShowAnswerHistory(true)}
+              className="w-full bg-white/20 hover:bg-white/30 text-white font-bold py-4 rounded-xl transition-colors"
+            >
+              View All Answers
+            </button>
+            <button
+              onClick={() => navigate('/admin')}
+              className="w-full bg-white/10 hover:bg-white/20 text-white font-bold py-4 rounded-xl transition-colors"
+            >
+              Host Another Game
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -230,6 +323,7 @@ export function AdminGame() {
   // Playing state
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-indigo-700 p-4">
+      {showAnswerHistory && renderAnswerHistory()}
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
@@ -241,8 +335,16 @@ export function AdminGame() {
               Question {session.currentQuestion + 1} of {totalQuestions}
             </p>
           </div>
-          <div className="bg-white/10 rounded-lg px-4 py-2 text-white">
-            Code: <span className="font-mono font-bold">{sessionCode}</span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowAnswerHistory(true)}
+              className="bg-white/10 hover:bg-white/20 rounded-lg px-3 py-2 text-white text-sm transition-colors"
+            >
+              View Answers
+            </button>
+            <div className="bg-white/10 rounded-lg px-4 py-2 text-white">
+              Code: <span className="font-mono font-bold">{sessionCode}</span>
+            </div>
           </div>
         </div>
 

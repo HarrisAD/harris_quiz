@@ -19,7 +19,6 @@ export function PlayerGame() {
 
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [earnedPoints, setEarnedPoints] = useState(0);
 
   // Get player info from sessionStorage (per-tab, allows multiple players in same browser)
   const odUserId = sessionStorage.getItem(`player_${sessionCode}`) || '';
@@ -36,7 +35,6 @@ export function PlayerGame() {
   useEffect(() => {
     setSelectedAnswer(null);
     setHasSubmitted(false);
-    setEarnedPoints(0);
   }, [session?.currentRound, session?.currentQuestion]);
 
   // Check if already answered (e.g., on page reload)
@@ -48,7 +46,6 @@ export function PlayerGame() {
         const answer = getPlayerAnswer(odUserId, session.currentRound, session.currentQuestion);
         if (answer) {
           setSelectedAnswer(answer.answerIndex);
-          setEarnedPoints(answer.points);
         }
       }
     }
@@ -69,7 +66,7 @@ export function PlayerGame() {
       ? 1000 + Math.floor(500 * (timeRemaining / currentQuestion.timeLimit))
       : 0;
 
-    setEarnedPoints(points);
+    // Don't show points yet - will be revealed when answer is shown
 
     // Get current scores from Firebase directly
     const currentTotalScore = myPlayer?.totalScore || 0;
@@ -198,27 +195,36 @@ export function PlayerGame() {
   // Round end leaderboard
   if (session.questionPhase === 'round_end') {
     const myRank = playersList.findIndex((p) => p.odUserId === odUserId) + 1;
+    const myRoundScore = myPlayer?.scores?.[session.currentRound] || 0;
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-500 to-pink-600 flex flex-col items-center justify-center p-4">
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <h1 className="text-3xl font-bold text-white mb-2">
             {currentRound?.name || `Round ${session.currentRound + 1}`} Complete!
           </h1>
-          <p className="text-white/80 text-lg">
-            You're in position #{myRank}
+          <p className="text-white/80 text-lg mb-2">
+            Your round score: {myRoundScore.toLocaleString()} points
+          </p>
+          <p className="text-white/60">
+            Position #{myRank} overall
           </p>
         </div>
 
         <div className="w-full max-w-md">
           <Leaderboard
             players={playersList}
-            title="Standings"
+            title="Round Standings"
+            showRoundScore={session.currentRound}
             highlightPlayerId={odUserId}
           />
         </div>
 
-        <div className="mt-6 text-center">
+        <div className="mt-4 text-center">
+          <p className="text-white/40 text-sm">Total: {myPlayer?.totalScore?.toLocaleString() || 0} points</p>
+        </div>
+
+        <div className="mt-4 text-center">
           <p className="text-white/60">Waiting for next round...</p>
         </div>
       </div>
@@ -291,18 +297,22 @@ export function PlayerGame() {
         </div>
       )}
 
-      {/* Points earned */}
-      {showResults && (
-        <div
-          className={`rounded-xl p-4 mb-4 text-center ${
-            earnedPoints > 0 ? 'bg-green-500/30' : 'bg-red-500/30'
-          }`}
-        >
-          <p className="text-white font-bold text-2xl">
-            {earnedPoints > 0 ? `+${earnedPoints} points!` : 'No points'}
-          </p>
-        </div>
-      )}
+      {/* Points earned - only show after reveal */}
+      {showResults && (() => {
+        const myAnswer = getPlayerAnswer(odUserId, session.currentRound, session.currentQuestion);
+        const points = myAnswer?.points || 0;
+        return (
+          <div
+            className={`rounded-xl p-4 mb-4 text-center ${
+              points > 0 ? 'bg-green-500/30' : 'bg-red-500/30'
+            }`}
+          >
+            <p className="text-white font-bold text-2xl">
+              {points > 0 ? `+${points} points!` : 'No points'}
+            </p>
+          </div>
+        );
+      })()}
 
       {/* Answers */}
       <div className="flex-1 flex flex-col gap-3">

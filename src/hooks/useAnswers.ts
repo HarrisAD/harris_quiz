@@ -55,11 +55,15 @@ export function useAnswers(sessionCode: string | null) {
     return answers[key] || null;
   };
 
+  // Get all answers (for admin history view)
+  const getAllAnswers = () => answers;
+
   return {
     answers,
     loading,
     getQuestionAnswers,
     hasPlayerAnswered,
     getPlayerAnswer,
+    getAllAnswers,
   };
 }
