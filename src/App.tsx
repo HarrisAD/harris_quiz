@@ -5,10 +5,12 @@ import { AdminGame } from './components/admin/AdminGame';
 import { QuizCreator } from './components/admin/QuizCreator';
 import { JoinGame } from './components/player/JoinGame';
 import { PlayerGame } from './components/player/PlayerGame';
+import { Watermark } from './components/shared/Watermark';
 
 function App() {
   return (
     <HashRouter>
+      <Watermark />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/admin" element={<AdminHome />} />
