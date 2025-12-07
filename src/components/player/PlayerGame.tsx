@@ -21,8 +21,26 @@ export function PlayerGame() {
   const [hasSubmitted, setHasSubmitted] = useState(false);
 
   // Get player info from sessionStorage (per-tab, allows multiple players in same browser)
-  const odUserId = sessionStorage.getItem(`player_${sessionCode}`) || '';
-  const teamName = sessionStorage.getItem(`teamName_${sessionCode}`) || 'Unknown Team';
+  // Fall back to localStorage for reconnection after refresh/tab close
+  let odUserId = sessionStorage.getItem(`player_${sessionCode}`) || '';
+  let teamName = sessionStorage.getItem(`teamName_${sessionCode}`) || '';
+
+  // Try to reconnect from localStorage if sessionStorage is empty
+  if (!odUserId && sessionCode) {
+    const lastCode = localStorage.getItem('lastSessionCode');
+    const lastPlayerId = localStorage.getItem('lastPlayerId');
+    const lastName = localStorage.getItem('lastTeamName');
+
+    if (lastCode === sessionCode && lastPlayerId && lastName) {
+      // Restore to sessionStorage for this session
+      odUserId = lastPlayerId;
+      teamName = lastName;
+      sessionStorage.setItem(`player_${sessionCode}`, odUserId);
+      sessionStorage.setItem(`teamName_${sessionCode}`, teamName);
+    }
+  }
+
+  if (!teamName) teamName = 'Unknown Team';
 
   // Get my player from the players object directly
   const myPlayer = odUserId ? players[odUserId] : null;

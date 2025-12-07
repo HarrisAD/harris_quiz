@@ -4,7 +4,7 @@ import { useSession } from '../../hooks/useSession';
 import { useQuiz } from '../../hooks/useQuiz';
 import { usePlayers } from '../../hooks/usePlayers';
 import { useAnswers } from '../../hooks/useAnswers';
-import { updateSession } from '../../firebase/database';
+import { updateSession, resetSession } from '../../firebase/database';
 import { Timer } from '../shared/Timer';
 import { Leaderboard } from '../shared/Leaderboard';
 
@@ -16,6 +16,13 @@ export function AdminGame() {
   const { playersList, playerCount, players } = usePlayers(sessionCode || null);
   const { getQuestionAnswers, getAllAnswers } = useAnswers(sessionCode || null);
   const [showAnswerHistory, setShowAnswerHistory] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  const handleResetGame = async () => {
+    if (!sessionCode) return;
+    await resetSession(sessionCode);
+    setShowResetConfirm(false);
+  };
 
   if (!sessionCode) {
     navigate('/admin');
@@ -317,12 +324,44 @@ export function AdminGame() {
               View All Answers
             </button>
             <button
+              onClick={() => setShowResetConfirm(true)}
+              className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-xl transition-colors"
+            >
+              Play Again (Same Quiz)
+            </button>
+            <button
               onClick={() => navigate('/admin')}
               className="w-full bg-white/10 hover:bg-white/20 text-white font-bold py-4 rounded-xl transition-colors"
             >
-              Host Another Game
+              Host Different Quiz
             </button>
           </div>
+
+          {/* Reset confirmation modal */}
+          {showResetConfirm && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+                <h2 className="text-xl font-bold mb-4">Start New Game?</h2>
+                <p className="text-gray-600 mb-6">
+                  This will clear all players and scores. Everyone will need to rejoin with the same code: <strong>{sessionCode}</strong>
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowResetConfirm(false)}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-xl transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleResetGame}
+                    className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl transition-colors"
+                  >
+                    Reset & Play Again
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

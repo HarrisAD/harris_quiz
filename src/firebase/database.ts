@@ -79,6 +79,22 @@ export const updateSession = async (
   await update(ref(db, `sessions/${sessionCode}`), updates);
 };
 
+// Reset session for a new game (clears players and answers, resets session state)
+export const resetSession = async (sessionCode: string): Promise<void> => {
+  const db = getDb();
+  // Clear players and answers
+  await set(ref(db, `players/${sessionCode}`), null);
+  await set(ref(db, `answers/${sessionCode}`), null);
+  // Reset session to lobby state
+  await update(ref(db, `sessions/${sessionCode}`), {
+    status: 'lobby',
+    currentRound: 0,
+    currentQuestion: 0,
+    questionPhase: 'waiting',
+    questionStartedAt: null,
+  });
+};
+
 export const subscribeToSession = (
   sessionCode: string,
   callback: (session: Session | null) => void
@@ -114,6 +130,15 @@ export const getPlayers = async (
 ): Promise<Record<string, Player> | null> => {
   const db = getDb();
   const snapshot = await get(ref(db, `players/${sessionCode}`));
+  return snapshot.val();
+};
+
+export const getPlayer = async (
+  sessionCode: string,
+  odUserId: string
+): Promise<Player | null> => {
+  const db = getDb();
+  const snapshot = await get(ref(db, `players/${sessionCode}/${odUserId}`));
   return snapshot.val();
 };
 

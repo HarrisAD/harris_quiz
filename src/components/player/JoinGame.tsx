@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getSession, joinSession, generatePlayerId } from '../../firebase/database';
+import { getSession, joinSession, generatePlayerId, getPlayer } from '../../firebase/database';
 
 export function JoinGame() {
   const navigate = useNavigate();
@@ -8,6 +8,54 @@ export function JoinGame() {
   const [teamName, setTeamName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [reconnectInfo, setReconnectInfo] = useState<{ code: string; name: string; odUserId: string } | null>(null);
+
+  // Check for reconnection opportunity on mount
+  useEffect(() => {
+    const lastCode = localStorage.getItem('lastSessionCode');
+    const lastPlayerId = localStorage.getItem('lastPlayerId');
+    const lastName = localStorage.getItem('lastTeamName');
+
+    if (lastCode && lastPlayerId && lastName) {
+      // Check if player still exists in that session
+      checkReconnection(lastCode, lastPlayerId, lastName);
+    }
+  }, []);
+
+  const checkReconnection = async (code: string, odUserId: string, name: string) => {
+    try {
+      const session = await getSession(code);
+      if (!session || session.status === 'finished') {
+        // Clear old data
+        localStorage.removeItem('lastSessionCode');
+        localStorage.removeItem('lastPlayerId');
+        localStorage.removeItem('lastTeamName');
+        return;
+      }
+
+      const player = await getPlayer(code, odUserId);
+      if (player) {
+        setReconnectInfo({ code, name, odUserId });
+      } else {
+        // Player no longer exists (game was reset)
+        localStorage.removeItem('lastSessionCode');
+        localStorage.removeItem('lastPlayerId');
+        localStorage.removeItem('lastTeamName');
+      }
+    } catch {
+      // Ignore errors
+    }
+  };
+
+  const handleReconnect = () => {
+    if (!reconnectInfo) return;
+
+    // Restore session storage for this tab
+    sessionStorage.setItem(`player_${reconnectInfo.code}`, reconnectInfo.odUserId);
+    sessionStorage.setItem(`teamName_${reconnectInfo.code}`, reconnectInfo.name);
+
+    navigate(`/play/${reconnectInfo.code}`);
+  };
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,10 +85,17 @@ export function JoinGame() {
         return;
       }
 
-      // Generate a player ID and store it in sessionStorage (per-tab)
+      // Generate a player ID and store it
       const odUserId = generatePlayerId();
+
+      // sessionStorage for per-tab (allows multiple players in same browser)
       sessionStorage.setItem(`player_${code}`, odUserId);
       sessionStorage.setItem(`teamName_${code}`, name);
+
+      // localStorage for reconnection (persists across browser close)
+      localStorage.setItem('lastSessionCode', code);
+      localStorage.setItem('lastPlayerId', odUserId);
+      localStorage.setItem('lastTeamName', name);
 
       await joinSession(code, odUserId, name);
       navigate(`/play/${code}`);
@@ -59,6 +114,32 @@ export function JoinGame() {
         <p className="text-gray-500 text-center mb-6">
           Enter the game code from your host
         </p>
+
+        {/* Reconnect banner */}
+        {reconnectInfo && (
+          <div className="mb-6 bg-green-50 border-2 border-green-200 rounded-xl p-4">
+            <p className="text-green-800 font-medium text-center mb-3">
+              Rejoin as "{reconnectInfo.name}"?
+            </p>
+            <button
+              onClick={handleReconnect}
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition-colors"
+            >
+              Rejoin Game ({reconnectInfo.code})
+            </button>
+            <button
+              onClick={() => {
+                setReconnectInfo(null);
+                localStorage.removeItem('lastSessionCode');
+                localStorage.removeItem('lastPlayerId');
+                localStorage.removeItem('lastTeamName');
+              }}
+              className="w-full mt-2 text-green-600 hover:text-green-800 text-sm"
+            >
+              Join as someone else
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handleJoin} className="space-y-4">
           <div>
