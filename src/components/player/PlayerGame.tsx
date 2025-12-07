@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useSession } from '../../hooks/useSession';
 import { useQuiz } from '../../hooks/useQuiz';
@@ -8,6 +8,7 @@ import { submitAnswer, updatePlayerScore } from '../../firebase/database';
 import { Timer } from '../shared/Timer';
 import { AnswerButton } from '../shared/AnswerButton';
 import { Leaderboard } from '../shared/Leaderboard';
+import { playSelect, playCorrect, playWrong, playRoundComplete, playGameStart, initAudio } from '../../utils/sounds';
 
 export function PlayerGame() {
   const { sessionCode } = useParams<{ sessionCode: string }>();
@@ -19,6 +20,8 @@ export function PlayerGame() {
 
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const prevPhaseRef = useRef<string | null>(null);
+  const prevStatusRef = useRef<string | null>(null);
 
   // Get player info from sessionStorage (per-tab, allows multiple players in same browser)
   // Fall back to localStorage for reconnection after refresh/tab close
@@ -49,6 +52,45 @@ export function PlayerGame() {
   const currentRound = quiz?.rounds[session?.currentRound || 0];
   const currentQuestion = currentRound?.questions[session?.currentQuestion || 0];
 
+  // Initialize audio on mount (required for mobile browsers)
+  useEffect(() => {
+    initAudio();
+  }, []);
+
+  // Play sounds when game state changes
+  useEffect(() => {
+    if (!session || !odUserId) return;
+
+    const prevPhase = prevPhaseRef.current;
+    const prevStatus = prevStatusRef.current;
+    const currentPhase = session.questionPhase;
+
+    // Game start sound (lobby -> playing)
+    if (prevStatus === 'lobby' && session.status === 'playing') {
+      playGameStart();
+    }
+
+    // When answer is revealed, play correct/wrong sound
+    if (prevPhase === 'answering' && currentPhase === 'revealed') {
+      const answer = getPlayerAnswer(odUserId, session.currentRound, session.currentQuestion);
+      if (answer) {
+        if (answer.correct) {
+          playCorrect();
+        } else {
+          playWrong();
+        }
+      }
+    }
+
+    // When round ends, play celebration
+    if (prevPhase !== 'round_end' && currentPhase === 'round_end') {
+      playRoundComplete();
+    }
+
+    prevPhaseRef.current = currentPhase;
+    prevStatusRef.current = session.status;
+  }, [session?.questionPhase, session?.status, session?.currentRound, session?.currentQuestion, odUserId, getPlayerAnswer]);
+
   // Reset state when question changes
   useEffect(() => {
     setSelectedAnswer(null);
@@ -71,6 +113,9 @@ export function PlayerGame() {
 
   const handleSubmitAnswer = async (answerIndex: number) => {
     if (!sessionCode || !session || !currentQuestion || !session.questionStartedAt) return;
+
+    // Play selection sound
+    playSelect();
 
     // Allow changing answer before submission is final
     setSelectedAnswer(answerIndex);

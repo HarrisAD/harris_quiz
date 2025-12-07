@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useSession } from '../../hooks/useSession';
 import { useQuiz } from '../../hooks/useQuiz';
@@ -7,6 +7,7 @@ import { useAnswers } from '../../hooks/useAnswers';
 import { updateSession, resetSession } from '../../firebase/database';
 import { Timer } from '../shared/Timer';
 import { Leaderboard } from '../shared/Leaderboard';
+import { playGameStart, playRoundComplete, initAudio } from '../../utils/sounds';
 
 export function AdminGame() {
   const { sessionCode } = useParams<{ sessionCode: string }>();
@@ -17,6 +18,31 @@ export function AdminGame() {
   const { getQuestionAnswers, getAllAnswers } = useAnswers(sessionCode || null);
   const [showAnswerHistory, setShowAnswerHistory] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const prevStatusRef = useRef<string | null>(null);
+  const prevPhaseRef = useRef<string | null>(null);
+
+  // Initialize audio
+  useEffect(() => {
+    initAudio();
+  }, []);
+
+  // Play sounds on game events
+  useEffect(() => {
+    if (!session) return;
+
+    // Game start sound (lobby -> playing)
+    if (prevStatusRef.current === 'lobby' && session.status === 'playing') {
+      playGameStart();
+    }
+
+    // Round end sound
+    if (prevPhaseRef.current !== 'round_end' && session.questionPhase === 'round_end') {
+      playRoundComplete();
+    }
+
+    prevStatusRef.current = session.status;
+    prevPhaseRef.current = session.questionPhase;
+  }, [session?.status, session?.questionPhase]);
 
   const handleResetGame = async () => {
     if (!sessionCode) return;

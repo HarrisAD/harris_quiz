@@ -1,14 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { playTick, playUrgentTick, playTimeUp } from '../../utils/sounds';
 
 interface TimerProps {
   startTime: number; // timestamp when question started
   duration: number; // seconds
   onTimeUp?: () => void;
   size?: 'small' | 'large';
+  enableSound?: boolean;
 }
 
-export function Timer({ startTime, duration, onTimeUp, size = 'large' }: TimerProps) {
+export function Timer({ startTime, duration, onTimeUp, size = 'large', enableSound = true }: TimerProps) {
   const [timeLeft, setTimeLeft] = useState(duration);
+  const lastTickRef = useRef<number>(duration + 1);
 
   useEffect(() => {
     const calculateTimeLeft = () => {
@@ -18,19 +21,31 @@ export function Timer({ startTime, duration, onTimeUp, size = 'large' }: TimerPr
     };
 
     setTimeLeft(calculateTimeLeft());
+    lastTickRef.current = duration + 1;
 
     const interval = setInterval(() => {
       const remaining = calculateTimeLeft();
       setTimeLeft(remaining);
 
+      // Play tick sounds for last 5 seconds (only once per second)
+      if (enableSound && remaining <= 5 && remaining > 0 && remaining < lastTickRef.current) {
+        lastTickRef.current = remaining;
+        if (remaining <= 3) {
+          playUrgentTick();
+        } else {
+          playTick();
+        }
+      }
+
       if (remaining <= 0) {
         clearInterval(interval);
+        if (enableSound) playTimeUp();
         onTimeUp?.();
       }
     }, 100);
 
     return () => clearInterval(interval);
-  }, [startTime, duration, onTimeUp]);
+  }, [startTime, duration, onTimeUp, enableSound]);
 
   const percentage = (timeLeft / duration) * 100;
   const isLow = timeLeft <= 5;
