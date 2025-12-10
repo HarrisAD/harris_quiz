@@ -32,9 +32,9 @@ export function Leaderboard({
 
   const getScore = (player: Player) => {
     if (showRoundScore !== undefined) {
-      return player.scores[showRoundScore] || 0;
+      return player.scores?.[showRoundScore] || 0;
     }
-    return player.totalScore;
+    return player.totalScore || 0;
   };
 
   return (
